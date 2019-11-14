@@ -51,7 +51,7 @@ def main():
     if args.inplace:
         args.store_name += '_inplace'
     if args.label_ts:
-        args.store_name += 'label_ts'
+        args.store_name += 'labelts'
 
     print('storing name: ' + args.store_name)
 
