@@ -14,8 +14,8 @@ class GroupRandomCrop(object):
         else:
             self.size = size
 
-    def __call__(self, img_group):
-
+    def __call__(self, image):
+        img_group, label = image
         w, h = img_group[0].size
         th, tw = self.size
 
@@ -31,33 +31,39 @@ class GroupRandomCrop(object):
             else:
                 out_images.append(img.crop((x1, y1, x1 + tw, y1 + th)))
 
-        return out_images
+        return out_images, label
 
 
 class GroupCenterCrop(object):
     def __init__(self, size):
         self.worker = torchvision.transforms.CenterCrop(size)
 
-    def __call__(self, img_group):
-        return [self.worker(img) for img in img_group]
+    def __call__(self, image):
+        img_group, label = image
+        return [self.worker(img) for img in img_group], label
 
 
 class GroupRandomHorizontalFlip(object):
     """Randomly horizontally flips the given PIL.Image with a probability of 0.5
     """
-    def __init__(self, is_flow=False):
+    def __init__(self, is_flow=False, label_transform=None):
+        self.label_transform = label_transform
         self.is_flow = is_flow
 
-    def __call__(self, img_group, is_flow=False):
+    def __call__(self, image, is_flow=False):
+        img_group, label = image
         v = random.random()
         if v < 0.5:
             ret = [img.transpose(Image.FLIP_LEFT_RIGHT) for img in img_group]
+            if self.label_transform is not None:
+                if label in self.label_transform:
+                    label = self.label_transform[label]
             if self.is_flow:
                 for i in range(0, len(ret), 2):
                     ret[i] = ImageOps.invert(ret[i])  # invert flow pixel values when flipping
-            return ret
+            return ret, label
         else:
-            return img_group
+            return img_group, label
 
 
 class GroupNormalize(object):
@@ -65,7 +71,8 @@ class GroupNormalize(object):
         self.mean = mean
         self.std = std
 
-    def __call__(self, tensor):
+    def __call__(self, te):
+        tensor, label = te
         rep_mean = self.mean * (tensor.size()[0]//len(self.mean))
         rep_std = self.std * (tensor.size()[0]//len(self.std))
 
@@ -73,7 +80,7 @@ class GroupNormalize(object):
         for t, m, s in zip(tensor, rep_mean, rep_std):
             t.sub_(m).div_(s)
 
-        return tensor
+        return tensor, label
 
 
 class GroupScale(object):
@@ -88,8 +95,9 @@ class GroupScale(object):
     def __init__(self, size, interpolation=Image.BILINEAR):
         self.worker = torchvision.transforms.Resize(size, interpolation)
 
-    def __call__(self, img_group):
-        return [self.worker(img) for img in img_group]
+    def __call__(self, image):
+        img_group, label = image
+        return [self.worker(img) for img in img_group], label
 
 
 class GroupOverSample(object):
@@ -102,8 +110,8 @@ class GroupOverSample(object):
             self.scale_worker = None
         self.flip = flip
 
-    def __call__(self, img_group):
-
+    def __call__(self, image):
+        img_group, label = image
         if self.scale_worker is not None:
             img_group = self.scale_worker(img_group)
 
@@ -128,7 +136,7 @@ class GroupOverSample(object):
             oversample_group.extend(normal_group)
             if self.flip:
                 oversample_group.extend(flip_group)
-        return oversample_group
+        return oversample_group, label
 
 
 # TSM 3crop 法，和STM有些不同。STM是先crop256x256三个，再resize到224，而TSM这里写的代码是crop3个从左到右的224x224
@@ -142,8 +150,8 @@ class GroupFullResSample(object):
             self.scale_worker = None
         self.flip = flip
 
-    def __call__(self, img_group):
-
+    def __call__(self, image):
+        img_group, label = image
         if self.scale_worker is not None:
             img_group = self.scale_worker(img_group)
 
@@ -175,7 +183,7 @@ class GroupFullResSample(object):
 
             oversample_group.extend(normal_group)
             oversample_group.extend(flip_group)
-        return oversample_group
+        return oversample_group, label
 
 
 # stm 3 crop
@@ -189,8 +197,8 @@ class GroupStmSample(object):
             self.scale_worker = None
         self.flip = flip
 
-    def __call__(self, img_group):
-
+    def __call__(self, image):
+        img_group, label = image
         if self.scale_worker is not None:
             img_group = self.scale_worker(img_group)
 
@@ -222,7 +230,7 @@ class GroupStmSample(object):
 
             oversample_group.extend(normal_group)
             oversample_group.extend(flip_group)
-        return oversample_group
+        return oversample_group, label
 
 
 class GroupMultiScaleCrop(object):
@@ -235,15 +243,15 @@ class GroupMultiScaleCrop(object):
         self.input_size = input_size if not isinstance(input_size, int) else [input_size, input_size]
         self.interpolation = Image.BILINEAR
 
-    def __call__(self, img_group):
-
+    def __call__(self, image):
+        img_group, label = image
         im_size = img_group[0].size
 
         crop_w, crop_h, offset_w, offset_h = self._sample_crop_size(im_size)
         crop_img_group = [img.crop((offset_w, offset_h, offset_w + crop_w, offset_h + crop_h)) for img in img_group]
         ret_img_group = [img.resize((self.input_size[0], self.input_size[1]), self.interpolation)
                          for img in crop_img_group]
-        return ret_img_group
+        return ret_img_group, label
 
     def _sample_crop_size(self, im_size):
         image_w, image_h = im_size[0], im_size[1]
@@ -310,7 +318,8 @@ class GroupRandomSizedCrop(object):
         self.size = size
         self.interpolation = interpolation
 
-    def __call__(self, img_group):
+    def __call__(self, image):
+        img_group, label = image
         for attempt in range(10):
             area = img_group[0].size[0] * img_group[0].size[1]
             target_area = random.uniform(0.08, 1.0) * area
@@ -338,12 +347,13 @@ class GroupRandomSizedCrop(object):
                 img = img.crop((x1, y1, x1 + w, y1 + h))
                 assert(img.size == (w, h))  # size != (w,h) 会报错
                 out_group.append(img.resize((self.size, self.size), self.interpolation))
-            return out_group
+            return out_group, label
         else:
             # Fallback
             scale = GroupScale(self.size, interpolation=self.interpolation)
             crop = GroupRandomCrop(self.size)
-            return crop(scale(img_group))
+            image_group, label = scale((img_group, label))
+            return crop((image_group, label))
 
 
 class Stack(object):
@@ -351,14 +361,15 @@ class Stack(object):
     def __init__(self, roll=False):
         self.roll = roll
 
-    def __call__(self, img_group):
+    def __call__(self, image):
+        img_group, label = image
         if img_group[0].mode == 'L':
             return np.concatenate([np.expand_dims(x, 2) for x in img_group], axis=2)
         elif img_group[0].mode == 'RGB':
             if self.roll:
                 return np.concatenate([np.array(x)[:, :, ::-1] for x in img_group], axis=2)
             else:
-                return np.concatenate(img_group, axis=2)
+                return np.concatenate(img_group, axis=2), label
 
 
 class ToTorchFormatTensor(object):
@@ -367,7 +378,8 @@ class ToTorchFormatTensor(object):
     def __init__(self, div=True):
         self.div = div
 
-    def __call__(self, pic):
+    def __call__(self, pi):
+        pic, label = pi
         if isinstance(pic, np.ndarray):
             # handle numpy array
             img = torch.from_numpy(pic).permute(2, 0, 1).contiguous()
@@ -378,7 +390,7 @@ class ToTorchFormatTensor(object):
             # put it from HWC to CHW format
             # yikes, this transpose takes 80% of the loading time/CPU
             img = img.transpose(0, 1).transpose(0, 2).contiguous()
-        return img.float().div(255) if self.div else img.float()
+        return img.float().div(255) if self.div else img.float(), label
 
 
 class IdentityTransform(object):

@@ -72,3 +72,4 @@ parser.add_argument('--dwise', default=False, action="store_true", help='add dep
 parser.add_argument('--dense_sample', default=False, action="store_true", help='use dense sample for video dataset')
 parser.add_argument('--corrg', default=1, type=int, help='number of correlation group (defual : 1)')
 parser.add_argument('--inplace', default=False, action="store_true", help='location of the operation')
+parser.add_argument('--label_ts', default=False, action="store_true", help='location of the operation')

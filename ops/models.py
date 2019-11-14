@@ -16,7 +16,7 @@ class TSN(nn.Module):
                  consensus_type='avg', before_softmax=True,
                  dropout=0.8, partial_bn=True, print_spec=True, pretrain='imagenet',
                  operations=None, n_div=8, fc_lr5=False, dwise=False, corr_g=1, inplace=False,
-                 non_local=False):
+                 non_local=False, label_transform=None):
         super(TSN, self).__init__()
         self.modality = modality
         self.num_segments = num_segments
@@ -34,6 +34,7 @@ class TSN(nn.Module):
         self.dwise = dwise
         self.corr_g = corr_g
         self.inplace = inplace
+        self.label_transform = label_transform
 
         if not before_softmax and consensus_type != 'avg':
             raise ValueError("Only avg consensus can be used after Softmax")
@@ -343,8 +344,9 @@ class TSN(nn.Module):
     def get_augmentation(self, flip=True):
         if self.modality == 'RGB':
             if flip:
+                print(self.label_transform)
                 return torchvision.transforms.Compose([GroupMultiScaleCrop(self.input_size, [1, .875, .75, .66]),
-                                                       GroupRandomHorizontalFlip(is_flow=False)])
+                                                       GroupRandomHorizontalFlip(is_flow=False, label_transform=self.label_transform)])
             else:
                 print('#' * 20, 'NO FLIP!!!')
                 return torchvision.transforms.Compose([GroupMultiScaleCrop(self.input_size, [1, .875, .75, .66])])

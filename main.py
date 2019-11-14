@@ -50,10 +50,21 @@ def main():
         args.store_name += '_corrg{}'.format(args.corrg)
     if args.inplace:
         args.store_name += '_inplace'
+    if args.label_ts:
+        args.store_name += 'label_ts'
 
     print('storing name: ' + args.store_name)
 
     check_rootfolders()
+
+    # label transform
+    if args.dataset == 'somethingv1' or args.dataset == 'somethingv2':
+        # label transformation for left/right categories
+        # please refer to labels.json file in sometingv2 for detail.
+        # target_transforms = {86:87,87:86,93:94,94:93,166:167,167:166}
+        target_transforms = {87: 88, 88: 87, 94: 95, 95: 94, 167: 168, 168: 167}
+    else:
+        target_transforms = None
 
     model = TSN(num_class, args.num_segments, args.modality,
                 base_model=args.arch,
@@ -63,14 +74,15 @@ def main():
                 pretrain=args.pretrain,
                 operations=args.operations, n_div=args.n_div, dwise=args.dwise, corr_g=args.corrg, inplace=args.inplace,
                 fc_lr5=not (args.tune_from and args.dataset in args.tune_from),
-                non_local=args.non_local)
+                non_local=args.non_local,
+                label_transform=target_transforms)
 
     crop_size = model.crop_size
     scale_size = model.scale_size
     input_mean = model.input_mean
     input_std = model.input_std
     policies = model.get_optim_policies()
-    train_augmentation = model.get_augmentation(flip=False if 'something' in args.dataset or 'jester' in args.dataset else True)
+    train_augmentation = model.get_augmentation(flip=False if ('something' in args.dataset or 'jester' in args.dataset) and (args.label_ts is False) else True)
 
     model = torch.nn.DataParallel(model).cuda()
 
